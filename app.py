@@ -12,7 +12,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from langchain_core.prompts import PromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-# from langchain_chroma import Chroma
+from langchain_chroma import Chroma
 import json
 import re
 import logging
