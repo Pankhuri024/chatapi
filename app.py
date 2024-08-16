@@ -19,9 +19,19 @@ import logging
 import sys
 import nltk
 
-
+@app.route('/check-nltk-data', methods=['GET'])
+def check_nltk_data():
+    nltk_data_dir = '/tmp/nltk_data/tokenizers/punkt'
+    try:
+        # List contents of the directory
+        files = os.listdir(nltk_data_dir)
+        return jsonify({'files': files}), 200
+    except FileNotFoundError:
+        return jsonify({'Message': 'Directory not found'}), 404
+    except Exception as e:
+        return jsonify({'Message': str(e)}), 500
 # Use /tmp or another writable directory
-nltk_data_dir = '/tmp/nltk_data'
+nltk_data_dir = '/tmp'
 
 # Ensure the directory exists
 os.makedirs(nltk_data_dir, exist_ok=True)
