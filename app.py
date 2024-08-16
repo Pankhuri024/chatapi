@@ -50,6 +50,7 @@ app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20 MB
 @app.route('/check-nltk-data', methods=['GET'])
 def check_nltk_data():
     nltk_data_dir = '/tmp/nltk_data/tokenizers/punkt'
+    logging.debug(f"Checking NLTK data directory: {nltk_data_dir}")
     try:
         # List contents of the directory
         files = os.listdir(nltk_data_dir)
