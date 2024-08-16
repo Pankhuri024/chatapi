@@ -1,0 +1,7 @@
+git init
+echo "venv/" > .gitignore
+# requirements.txt
+gunicorn
+flask  # or other dependencies
+.env
+
