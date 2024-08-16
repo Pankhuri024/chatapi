@@ -16,13 +16,6 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 import json
 import re
 import logging
-import pysqlite3
-
-sys.modules['sqlite3'] = pysqlite3
-
-import sqlite3
-
-print(sqlite3.sqlite_version)
 import sys
 import nltk
 
