@@ -47,18 +47,6 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20 MB
 
 
-@app.route('/check-nltk-data', methods=['GET'])
-def check_nltk_data():
-    nltk_data_dir = '/tmp/nltk_data/tokenizers/punkt'
-    logging.debug(f"Checking NLTK data directory: {nltk_data_dir}")
-    try:
-        # List contents of the directory
-        files = os.listdir(nltk_data_dir)
-        return jsonify({'files': files}), 200
-    except FileNotFoundError:
-        return jsonify({'Message': 'Directory not found'}), 404
-    except Exception as e:
-        return jsonify({'Message': str(e)}), 500
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
