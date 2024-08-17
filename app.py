@@ -69,8 +69,14 @@ def extract_text(loader, file_path):
 
     try:
         # Load the document
-        doc = loader(file_path).load()
-        logging.debug(f"Document loaded successfully: {file_path}. Document details: {doc}")
+        # Load the document
+        loader_instance = loader(file_path)
+        doc = loader_instance.load()
+        logging.debug(f"Loader instance: {loader_instance}")
+        logging.debug(f"Document loaded: {doc}")
+        # doc = loader(file_path).load()
+        # logging.debug(f"Document loaded: {doc}")
+        # logging.debug(f"Document loaded successfully: {file_path}. Document details: {doc}")
         
         # Check if the document is empty
         if not doc:
