@@ -51,56 +51,20 @@ app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20 MB
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# def extract_text(loader, file_path):
-#     logging.debug(f"Extracting text from file: {file_path} using loader: {loader}")
-#     try:
-#         doc = loader(file_path).load()
-#         logging.debug(f"Document loaded successfully: {file_path}")
-#         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50, add_start_index=True)
-#         all_split = text_splitter.split_documents(doc)
-#         logging.debug(f"Text split into {len(all_split)} chunks")
-#         return all_split, doc
-#     except Exception as e:
-#         logging.error(f"Error extracting text from {file_path}: {e}")
-#         return None, f"Error extracting text: {e}"
-   
 def extract_text(loader, file_path):
-    logging.debug(f"Starting text extraction from file: {file_path} using loader: {loader}")
-
+    logging.debug(f"Extracting text from file: {file_path} using loader: {loader}")
     try:
-        # Load the document
-        # Load the document
-        loader_instance = loader(file_path)
-        doc = loader_instance.load()
-        logging.debug(f"Loader instance: {loader_instance}")
-        logging.debug(f"Document loaded: {doc}")
-        # doc = loader(file_path).load()
-        # logging.debug(f"Document loaded: {doc}")
-        # logging.debug(f"Document loaded successfully: {file_path}. Document details: {doc}")
-        
-        # Check if the document is empty
-        if not doc:
-            logging.error(f"Document is empty: {file_path}")
-            return None, "Document is empty"
-
-        # Split the document into chunks
+        doc = loader(file_path).load()
+        logging.debug(f"Document loaded successfully: {file_path}")
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50, add_start_index=True)
-        all_splits = text_splitter.split_documents(doc)
-        
-        # Log the number of chunks
-        logging.debug(f"Text split into {len(all_splits)} chunks")
-        
-        return all_splits, doc
-
-    except FileNotFoundError as fnf_error:
-        logging.error(f"File not found: {file_path}. Error: {fnf_error}")
-        return None, f"File not found: {fnf_error}"
-    except IOError as io_error:
-        logging.error(f"I/O error occurred while processing file: {file_path}. Error: {io_error}")
-        return None, f"I/O error occurred: {io_error}"
+        all_split = text_splitter.split_documents(doc)
+        logging.debug(f"Text split into {len(all_split)} chunks")
+        return all_split, doc
     except Exception as e:
-        logging.error(f"Unexpected error during text extraction from {file_path}: {e}")
-        return None, f"Error extracting text: {e}"    
+        logging.error(f"Error extracting text from {file_path}: {e}")
+        return None, f"Error extracting text: {e}"
+   
+    
     
 
 def handle_input_file(file):
@@ -192,9 +156,7 @@ def upload_document():
         # Initialize components for a fresh session
         selected_model = models
         llm = ChatOpenAI(model=selected_model)
-        
-        # Replace Chroma with FAISS
-        vectorstore = FAISS.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
+        vectorstore = Chroma.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
 
         template_with_question_for_insights = """Analyze the content of the provided file and generate up to 15 insights. Each insight should include a summary (200 characters) and a detailed description (1500 characters). Output the response in JSON format without 'json' heading, with each insight structured as follows and {input}:
 
@@ -240,6 +202,10 @@ Instructions:
 3. If there is no insight, generate the response without JSON header with the message: "Message": "There is no insight found. Please upload a different document."
 4. Ensure the response does not mention ChatGPT or OpenAI.
 5. The insights can be up to 15. For example, if there are only two insights available in the document, then generate two insights. If there are ten insights, generate ten insights. The insights should be in order: Insight1, Insight2......Insight15..
+
+<context>
+{context}
+</context>
 """
         # Construct prompt template
         logging.debug('Constructing prompt template.')
@@ -249,135 +215,30 @@ Instructions:
             custom_rag_prompt = PromptTemplate.from_template(template_without_question_for_insights)
         
         document_chain = create_stuff_documents_chain(llm, custom_rag_prompt)
-        chain = create_retrieval_chain(llm, retriever, document_chain)
+        retriever = vectorstore.as_retriever()
+        retrieval_chain = create_retrieval_chain(retriever, document_chain)
+        response = retrieval_chain.invoke({"input": question, "context": combined_text})
+        vectorstore.delete_collection()
         
-        logging.debug('Starting the chain with context.')
-        result = chain({"context": combined_text})
-        result = json.dumps(result, ensure_ascii=False).replace("\\n", "")
-        
-        shutil.rmtree(temp_dir)
-        return jsonify(result)
-    except Exception as e:
-        logging.error(f"An error occurred: {e}")
-        return jsonify({"Message": f"An error occurred: {str(e)}"}), 500
-# def upload_document():
-#     logging.debug("Starting upload_document function.")
-#     # Ensure OPENAI_API_KEY is set
-#     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-#     if not OPENAI_API_KEY:
-#         raise ValueError("The OPENAI_API_KEY environment variable is not set. Please set it in your environment.")
-#     logging.debug(f"OPENAI_API_KEY: {OPENAI_API_KEY}")
+        try:
+            # Load the data from the JSON response
+            data = json.loads(response["answer"])
 
-#     os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-#     if 'file' not in request.files:
-#         logging.error('No file part in request.')
-#         return jsonify({'Message': 'No file part'}), 400
+            # Order the dictionary by its keys
+            ordered_data = dict(sorted(data.items(), key=lambda item: extract_number(item[0])))
 
-#     file = request.files['file']
-#     question = request.args.get('question', '')
+            # Convert the ordered dictionary back to JSON format
+            ordered_data = json.dumps(ordered_data, indent=4)
+            #ordered_json = json.loads(ordered_data)
+        except json.JSONDecodeError:
+            return jsonify({"Message": "Failed to decode JSON response from LLM"}), 500
 
-#     if file.filename == '':
-#         return jsonify({'Message': 'Invalid file'}), 400
-#     if not allowed_file(file.filename):
-#         return jsonify({'Message': 'File type not allowed'}), 400
+        if not data:
+            return jsonify({"Message": "There is no insight found. Please upload a different document"}), 200
 
-#     try:
-#         # Handle file input
-#         all_splits, docs, temp_dir = handle_input_file(file)
-#         if all_splits is None:
-#             if temp_dir:
-#                 shutil.rmtree(temp_dir)
-#             return jsonify({'Message': docs}), 400
-
-#         # Combine text for context
-#         combined_text = " ".join([split.page_content for split in all_splits])
-
-#         # Initialize components for a fresh session
-#         selected_model = models
-#         llm = ChatOpenAI(model=selected_model)
-#         vectorstore = Chroma.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
-
-#         template_with_question_for_insights = """Analyze the content of the provided file and generate up to 15 insights. Each insight should include a summary (200 characters) and a detailed description (1500 characters). Output the response in JSON format without 'json' heading, with each insight structured as follows and {input}:
-
-# - Insight1:
-#   - Summary: Insight summary here
-#   - Description: Detailed insight description here
-# - Insight2:
-#   - Summary: Insight summary here
-#   - Description: Detailed insight description here
-# ...
-# - Insight15:
-#   - Summary: Insight summary here
-#   - Description: Detailed insight description here
-
-# Instructions:
-# 1. Base your response solely on the content within the provided context.
-# 2. Do not introduce new elements or information not present in the context.
-# 3. If there is no insight, generate the response without JSON header with the message: "Message": "There is no insight found. Please upload a different document."
-# 4. Ensure the response does not mention ChatGPT or OpenAI.
-# 5. The insights can be up to 15. For example, if there are only two insights available in the document, then generate two insights. If there are ten insights, generate ten insights. The insights should be in order: Insight1, Insight2......Insight15.
-# <context>
-# {context}
-# </context>
-# """
-
-#         template_without_question_for_insights = """
-# Analyze the content of the provided file  and generate up to 15 insights. Each insight should include a summary (200 characters) and a detailed description (1500 characters). Output the response in JSON format without 'json' heading, with each insight structured as follows:
-
-# - Insight1:
-#   - Summary: Insight summary here
-#   - Description: Detailed insight description here
-# - Insight2:
-#   - Summary: Insight summary here
-#   - Description: Detailed insight description here
-# ...
-# - Insight15:
-#   - Summary: Insight summary here
-#   - Description: Detailed insight description here
-
-# Instructions:
-# 1. Base your response solely on the content within the provided context.
-# 2. Do not introduce new elements or information not present in the context.
-# 3. If there is no insight, generate the response without JSON header with the message: "Message": "There is no insight found. Please upload a different document."
-# 4. Ensure the response does not mention ChatGPT or OpenAI.
-# 5. The insights can be up to 15. For example, if there are only two insights available in the document, then generate two insights. If there are ten insights, generate ten insights. The insights should be in order: Insight1, Insight2......Insight15..
-
-# <context>
-# {context}
-# </context>
-# """
-#         # Construct prompt template
-#         logging.debug('Constructing prompt template.')
-#         if question:
-#             custom_rag_prompt = PromptTemplate.from_template(template_with_question_for_insights)
-#         else:
-#             custom_rag_prompt = PromptTemplate.from_template(template_without_question_for_insights)
-        
-#         document_chain = create_stuff_documents_chain(llm, custom_rag_prompt)
-#         retriever = vectorstore.as_retriever()
-#         retrieval_chain = create_retrieval_chain(retriever, document_chain)
-#         response = retrieval_chain.invoke({"input": question, "context": combined_text})
-#         vectorstore.delete_collection()
-        
-#         try:
-#             # Load the data from the JSON response
-#             data = json.loads(response["answer"])
-
-#             # Order the dictionary by its keys
-#             ordered_data = dict(sorted(data.items(), key=lambda item: extract_number(item[0])))
-
-#             # Convert the ordered dictionary back to JSON format
-#             ordered_data = json.dumps(ordered_data, indent=4)
-#             #ordered_json = json.loads(ordered_data)
-#         except json.JSONDecodeError:
-#             return jsonify({"Message": "Failed to decode JSON response from LLM"}), 500
-
-#         if not data:
-#             return jsonify({"Message": "There is no insight found. Please upload a different document"}), 200
-
-#         # Cleanup
-#         if temp_dir:
-#             shutil.rmtree(temp_dir)
+        # Cleanup
+        if temp_dir:
+            shutil.rmtree(temp_dir)
 
         # Clear variables to avoid retention of previous data
         del llm
